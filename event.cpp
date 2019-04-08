@@ -64,7 +64,7 @@ __CQ_EVENT(int32_t, cq_event_group_msg, 36)
     if (e.is_anonymous()) {
         // in CoolQ Air, there is a prefix in the message
         auto prefix = "&#91;" + e.anonymous.name + "&#93;:";
-        if (boost::starts_with(e.raw_message, prefix)) {
+        if (sutils::starts_with(e.raw_message, prefix)) {
             e.raw_message = e.raw_message.substr(prefix.length());
         }
     }

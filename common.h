@@ -2,7 +2,6 @@
 
 #include <Windows.h>
 #include <algorithm>
-#include <boost/algorithm/string.hpp>
 #include <cstdint>
 #include <functional>
 #include <list>
