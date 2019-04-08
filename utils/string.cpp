@@ -127,3 +127,237 @@ namespace cq::utils {
 
     string ansi(const string &s) { return string_encode(s, Encoding::ANSI); }
 } // namespace cq::utils
+
+bool sutils::starts_with(const std::string &source, const std::string &prefix, const size_t begin = 0) noexcept {
+    if (source.size() < begin + prefix.size()) return false;
+    for (size_t i = 0; i < prefix.size(); i++){
+        if (source[i + begin] != prefix[i]) return false;
+    }
+    return true;
+}
+
+struct escape_code {
+    char from[6];
+    char to;
+} static constexpr ESCAPES[4]{
+    {"&#44;", ','}, 
+    {"&#91;", '['}, 
+    {"&#93;", ']'}, 
+    {"&amp;", '&'}
+};
+
+std::string sutils::cq_escape(const std::string &source, const bool escape_comma) noexcept {
+    std::vector<char> buff;
+    size_t start = !escape_comma;
+    for (size_t i = 0; i < source.size(); i++) {
+        bool escaped = false;
+        for (size_t j = start; j < 4; j++) {
+            if (source[i] == ESCAPES[j].to) {
+                size_t k = 0;
+                while (ESCAPES[j].from[k])
+                    buff.push_back(ESCAPES[j].from[k++]);
+                escaped = true;
+                break;
+            }
+        }
+        if (!escaped)
+            buff.push_back(source[i]);
+    }
+    buff.push_back('\0');
+    return std::string(buff.data());
+}
+
+std::string sutils::cq_unescape(const std::string &source) noexcept {
+    std::vector<char> buff;
+    size_t i = 0;
+    while (true) {
+        while (source[i] != '&') {
+            buff.push_back(source[i]);
+            if (!source[i])
+                break;
+            i++;
+        }
+
+        if (i + 5 > source.size()) {
+            while (source[i]) {
+                buff.push_back(source[i]);
+                i++;
+            }
+            buff.push_back('\0');
+            return std::string(buff.data());
+        }
+
+        for (size_t j = 0; j < 4; j++) {
+            size_t k = 0;
+            while (ESCAPES[j].from[k] && source[i + k] == ESCAPES[j].from[k])
+                k++;
+
+            if (k == 5) {
+                buff.push_back(ESCAPES[j].to);
+                i += 5;
+                break;
+            }
+        }
+    }
+    buff.push_back('\0');
+    return std::string(buff.data());
+}
+
+void sutils::split_string_by_char(std::vector<std::string> &container, std::string source, char splitter) noexcept {
+    size_t i = 0;
+    while (source[i]) {
+        std::vector<char> buff;
+        while (source[i] && source[i] != splitter)
+            buff.push_back(source[i++]);
+        if (buff.size() > 0) {
+            buff.push_back('\0');
+            container.emplace_back(buff.data());
+        }
+    }
+}
+
+static constexpr char cq_prefix [] ="[CQ:";
+static constexpr size_t cq_prefix_len = sizeof(cq_prefix)-1;
+static bool c_starts_with(const char * source, size_t source_len, const char * prefix, size_t prefix_len, const size_t begin = 0) noexcept {
+    if (source_len < begin + prefix_len) return false;
+    for (size_t i = 0; i < prefix_len; i++){
+        if (source[i + begin] != prefix[i]) return false;
+    }
+    return true;
+}
+
+void sutils::cq_disasemble(const std::string & source, std::vector<cq_disasemblies> & container) noexcept {
+
+	std::size_t operation_pos = 0;
+	std::size_t panic_pos = 0;
+	std::size_t next = 0;
+
+	auto panic_end = [&]() {
+		sutils::cq_disasemblies item = {
+			"",
+			{params_pair("", source.substr(panic_pos))}
+		};
+		container.emplace_back(std::move(item));
+	};
+
+	for (; operation_pos < source.size();) {
+		std::size_t pos_of_lsbracket = source.find_first_of('[', operation_pos);
+		if (pos_of_lsbracket == std::string::npos) {
+			panic_end();
+			return;
+		}
+
+		next = cq_prefix_len;
+		if (!c_starts_with(source.data(), source.size(), cq_prefix, cq_prefix_len, pos_of_lsbracket)) {
+			operation_pos += next;
+			continue;
+		}
+			
+		int mode = 0;
+
+		std::size_t i = pos_of_lsbracket + cq_prefix_len;
+		std::size_t pos_of_rsbracket = std::string::npos;
+
+		for (; i < source.size(); i++) {
+			if((source[i] >= 'A' && source[i] <= 'Z')
+				|| (source[i] >= 'a' && source[i] <= 'z')
+				|| (source[i] >= '0' && source[i] <= '9')) continue;
+			// "[CQ:where,"
+			else if(source[i] == ',') {
+				pos_of_rsbracket = source.find_first_of(']', i + 1);
+				if (pos_of_rsbracket == std::string::npos) {
+					panic_end();
+					return;
+				}
+				else {
+					mode = 1;
+				}
+				break;
+			}
+			// "[CQ:what]"
+			else if(source[i] == ']') {
+				pos_of_rsbracket = i;
+				mode = 2;
+				break;
+			}
+			else break;
+		}
+
+		if (mode > 0) {
+			if (pos_of_lsbracket > panic_pos) {
+				sutils::cq_disasemblies preifx = {
+					"",
+					{{"",source.substr(panic_pos, pos_of_lsbracket - panic_pos)}}
+				};
+				container.emplace_back(std::move(preifx));
+			}
+
+			if (mode == 1) {
+
+				sutils::cq_disasemblies item = {
+					source.substr(pos_of_lsbracket + cq_prefix_len, i - pos_of_lsbracket - cq_prefix_len),
+					{}
+				};
+				std::size_t after_comma = i + 1;
+				
+				auto push_pair = [&](std::string && par1, std::string && par2){
+					params_pair ppair = { std::move(par1), std::move(par2) };
+					item.params.emplace_back(std::move(ppair));
+				};
+
+                auto trim_params = [&](std::size_t begin, std::size_t end)->std::string{
+                    // trim, possibly useless
+					while (source[begin] == ' ') begin++;
+					while (source[end] == ' ') end--;
+                    return source.substr(begin, end + 1 - begin);
+                };
+
+				for (;;) {
+
+                    // "[CQ:what,params=123123,"
+                    //                 ^
+					std::size_t pos_of_equal = source.find_first_of('=', after_comma);
+
+                    // "[CQ:what,params=123123,"
+                    //           ^----^
+					std::string params1 = trim_params(after_comma, pos_of_equal - 1);
+
+                    // "[CQ:what,params=123123,"
+                    //                        ^
+					std::size_t pos_of_comma = source.find_first_of(',', after_comma);
+					if (pos_of_comma == std::string::npos || pos_of_comma > pos_of_rsbracket) {
+
+                        // "[CQ:what,params=123123]"
+                        //                  ^----^
+						std::string params2 = source.substr(pos_of_equal + 1, pos_of_rsbracket - pos_of_equal - 1);
+						push_pair(std::move(params1), std::move(params2));
+						break;
+					}
+					else {
+                        // "[CQ:what,params=123123,"
+                        //                  ^----^
+						std::string params2 = source.substr(pos_of_equal + 1, pos_of_comma - pos_of_equal - 1);
+						push_pair(std::move(params1), std::move(params2));
+
+                        // "[CQ:what,params=123123,params=1234"
+                        //                        ^
+						after_comma = pos_of_comma + 1;
+						continue;
+					}
+				}
+				container.emplace_back(std::move(item));
+				panic_pos = operation_pos = pos_of_rsbracket + 1;
+			}
+			else if (mode == 2) {
+				sutils::cq_disasemblies item = {
+					source.substr(pos_of_lsbracket + cq_prefix_len, i - pos_of_lsbracket - cq_prefix_len),
+					{}
+				};
+				container.emplace_back(std::move(item));
+				panic_pos = operation_pos = i + 1;
+			}
+
+		}
+		else operation_pos = i + 1;
+	}
+}
