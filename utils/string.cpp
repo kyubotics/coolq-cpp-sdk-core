@@ -142,55 +142,62 @@ struct escape_code {
 } static constexpr ESCAPES[4]{{"&#44;", ','}, {"&#91;", '['}, {"&#93;", ']'}, {"&amp;", '&'}};
 
 std::string sutils::cq_escape(const std::string &source, const bool escape_comma) noexcept {
-    std::vector<char> buff;
-    size_t start = !escape_comma;
-    for (size_t i = 0; i < source.size(); i++) {
+    std::vector<char> buff(source.size() + 1);
+    std::size_t cursor = 0;
+
+    auto insert = [&](char c) {
+        if (cursor >= buff.size()) buff.resize(buff.size() + 32);
+        buff[cursor] = c;
+        cursor++;
+    };
+
+    std::size_t start = !escape_comma;
+    for (std::size_t i = 0; i < source.size(); i++) {
         bool escaped = false;
-        for (size_t j = start; j < 4; j++) {
+        for (std::size_t j = start; j < 4; j++) {
             if (source[i] == ESCAPES[j].to) {
-                size_t k = 0;
-                while (ESCAPES[j].from[k]) buff.push_back(ESCAPES[j].from[k++]);
+                std::size_t k = 0;
+                while (ESCAPES[j].from[k]) insert(ESCAPES[j].from[k++]);
                 escaped = true;
                 break;
             }
         }
-        if (!escaped) buff.push_back(source[i]);
+        if (!escaped) insert(source[i]);
     }
-    buff.push_back('\0');
+    insert('\0');
     return std::string(buff.data());
 }
 
 std::string sutils::cq_unescape(const std::string &source) noexcept {
-    std::vector<char> buff;
+    std::vector<char> buff(source.size() + 1);
+    std::size_t cursor = 0;
+
+    auto insert = [&](char c) { buff[cursor++] = c; };
+
     size_t i = 0;
     while (true) {
         while (source[i] != '&') {
-            buff.push_back(source[i]);
-            if (!source[i]) break;
+            insert(source[i]);
+            if (!source[i]) return std::string(buff.data());
             i++;
         }
 
         if (i + 5 > source.size()) {
-            while (source[i]) {
-                buff.push_back(source[i]);
-                i++;
-            }
-            buff.push_back('\0');
-            return std::string(buff.data());
+            insert(source[i++]);
+            continue;
         }
 
-        for (size_t j = 0; j < 4; j++) {
-            size_t k = 0;
+        std::size_t j = 0, k = 0;
+        for (; j < 4; j++) {
             while (ESCAPES[j].from[k] && source[i + k] == ESCAPES[j].from[k]) k++;
-
-            if (k == 5) {
-                buff.push_back(ESCAPES[j].to);
-                i += 5;
-                break;
-            }
+            if (k == 5) break;
         }
+        if (k == 5) {
+            insert(ESCAPES[j].to);
+            i += 5;
+        } else
+            insert(source[i++]);
     }
-    buff.push_back('\0');
     return std::string(buff.data());
 }
 
@@ -217,7 +224,7 @@ static bool c_starts_with(const char *source, size_t source_len, const char *pre
     return true;
 }
 
-void sutils::cq_disasemble(const std::string &source, std::vector<cq_disasemblies> &container) noexcept {
+void sutils::cq_disasemble(const std::string &source, std::list<cq_disasemblies> &container) noexcept {
     std::size_t operation_pos = 0;
     std::size_t panic_pos = 0;
     std::size_t next = 0;

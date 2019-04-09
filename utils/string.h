@@ -62,5 +62,5 @@ namespace sutils {
         std::vector<params_pair> params;
     };
 
-    extern void cq_disasemble(const std::string &source, std::vector<cq_disasemblies> &container) noexcept;
+    extern void cq_disasemble(const std::string &source, std::list<cq_disasemblies> &container) noexcept;
 } // namespace sutils

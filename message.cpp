@@ -36,7 +36,7 @@ namespace cq::message {
         stringstream text_s, function_name_s, params_s;
         auto curr_cq_start = end;
 
-        std::vector<sutils::cq_disasemblies> container;
+        std::list<sutils::cq_disasemblies> container;
         sutils::cq_disasemble(msg_str, container);
 
         for (auto const &item : container) {
