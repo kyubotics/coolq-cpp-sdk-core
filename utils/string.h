@@ -57,10 +57,10 @@ namespace sutils {
      * also, "text" result will be cq_unescaped
      */
     using params_pair = std::pair<std::string, std::string>;
-    struct cq_disasemblies {
+    struct cq_disassemblies {
         std::string type;
-        std::vector<params_pair> params;
+        std::list<params_pair> params;
     };
 
-    extern void cq_disasemble(const std::string &source, std::list<cq_disasemblies> &container) noexcept;
+    extern void cq_disassemble(const std::string &source, std::list<cq_disassemblies> &container) noexcept;
 } // namespace sutils

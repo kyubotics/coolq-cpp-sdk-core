@@ -141,28 +141,47 @@ struct escape_code {
     char to;
 } static constexpr ESCAPES[4]{{"&#44;", ','}, {"&#91;", '['}, {"&#93;", ']'}, {"&amp;", '&'}};
 
+static constexpr std::size_t ESCAPE_LEN = sizeof(ESCAPES[0].from) - 1;
+static constexpr std::size_t ESCAPE_CT = sizeof(ESCAPES) / sizeof(ESCAPES[0]);
+
+static inline size_t escape_char_hash(char c, const bool escape_comma) {
+    switch (c) {
+    case ',':
+        if (escape_comma)
+            return 0;
+        else
+            return std::string::npos;
+    case '[':
+        return 1;
+    case ']':
+        return 2;
+    case '&':
+        return 3;
+    default:
+        return std::string::npos;
+    }
+}
+
+static const std::size_t buff_alloc_size = 32;
+
 std::string sutils::cq_escape(const std::string &source, const bool escape_comma) noexcept {
     std::vector<char> buff(source.size() + 1);
     std::size_t cursor = 0;
 
     auto insert = [&](char c) {
-        if (cursor >= buff.size()) buff.resize(buff.size() + 32);
+        if (cursor >= buff.size()) buff.resize(buff.size() + buff_alloc_size);
         buff[cursor] = c;
         cursor++;
     };
 
-    std::size_t start = !escape_comma;
     for (std::size_t i = 0; i < source.size(); i++) {
-        bool escaped = false;
-        for (std::size_t j = start; j < 4; j++) {
-            if (source[i] == ESCAPES[j].to) {
-                std::size_t k = 0;
-                while (ESCAPES[j].from[k]) insert(ESCAPES[j].from[k++]);
-                escaped = true;
-                break;
-            }
-        }
-        if (!escaped) insert(source[i]);
+        std::size_t which = escape_char_hash(source[i], escape_comma);
+        if (which != std::string::npos) {
+            std::size_t k = 0;
+            while (ESCAPES[which].from[k]) insert(ESCAPES[which].from[k++]);
+            continue;
+        } else
+            insert(source[i]);
     }
     insert('\0');
     return std::string(buff.data());
@@ -182,19 +201,19 @@ std::string sutils::cq_unescape(const std::string &source) noexcept {
             i++;
         }
 
-        if (i + 5 > source.size()) {
+        if (i + ESCAPE_LEN > source.size()) {
             insert(source[i++]);
             continue;
         }
 
         std::size_t j = 0, k = 0;
-        for (; j < 4; j++) {
+        for (; j < ESCAPE_CT; j++) {
             while (ESCAPES[j].from[k] && source[i + k] == ESCAPES[j].from[k]) k++;
             if (k == 5) break;
         }
-        if (k == 5) {
+        if (k == ESCAPE_LEN) {
             insert(ESCAPES[j].to);
-            i += 5;
+            i += ESCAPE_LEN;
         } else
             insert(source[i++]);
     }
@@ -215,130 +234,179 @@ void sutils::split_string_by_char(std::vector<std::string> &container, std::stri
 
 static constexpr char cq_prefix[] = "[CQ:";
 static constexpr size_t cq_prefix_len = sizeof(cq_prefix) - 1;
-static bool c_starts_with(const char *source, size_t source_len, const char *prefix, size_t prefix_len,
-                          const size_t begin = 0) noexcept {
-    if (source_len < begin + prefix_len) return false;
-    for (size_t i = 0; i < prefix_len; i++) {
-        if (source[i + begin] != prefix[i]) return false;
-    }
-    return true;
-}
 
-void sutils::cq_disasemble(const std::string &source, std::list<cq_disasemblies> &container) noexcept {
-    std::size_t operation_pos = 0;
-    std::size_t panic_pos = 0;
-    std::size_t next = 0;
+enum class CQ_BLOCK_DETECT_TYPE {
+    none, // set mode to none when ill-formed
+    cq_type, // "[CQ:t", type is always longer than 0
+    cq_type_follow, // "[CQ:type"
+    cq_para_first, // "[CQ:type, f", param is always longer than 0, also ignore spaces
+    cq_para_first_follow, // "[CQ:type, first"
+    cq_para_first_tail, // "[CQ:type, first ", ignore spaces after param
+    cq_para_second, // "[CQ:type, first =s",  value is always longer than 0
+    cq_para_second_follow, // "[CQ:type, first =second"
+    cq_end // "[CQ:type, first =second]"
+};
 
+void sutils::cq_disassemble(const std::string &source, std::list<cq_disassemblies> &container) noexcept {
+    std::size_t operation_pos = 0; // process will try to find [CQ: from operation position
+    std::size_t panic_pos = 0; // panic position is at the beginning of source string, when a well-formed [CQ:] block
+                               // ended, panic position will point to the position after ']'
+
+    // there are two situations where panic_end is called
+    // 1. well-formed [CQ:] block ended, but there are some text before [CQ:] block, panic_from would point to the place
+    // before the beginning '[' of [CQ:] block.
+    // 2. full source text ends with no [CQ:] block on tail, panic_from would point to std::string::npos.
     auto panic_end = [&](std::size_t panic_from) {
         std::string content = source.substr(panic_pos, panic_from - panic_pos);
-        sutils::cq_disasemblies item = {"text", {{"text", cq_unescape(content)}}};
+        sutils::cq_disassemblies item = {"text", {{"text", cq_unescape(content)}}};
         container.emplace_back(std::move(item));
     };
 
     for (; operation_pos < source.size();) {
+        // always begin with '['
         std::size_t pos_of_lsbracket = source.find_first_of('[', operation_pos);
-        if (pos_of_lsbracket == std::string::npos) {
+
+        // if '[' cannot be found or remaining text won't fit any [CQ:] block, panic-ends process
+        if (pos_of_lsbracket == std::string::npos || source.size() < pos_of_lsbracket + cq_prefix_len) {
             panic_end(std::string::npos);
             return;
         }
 
-        next = cq_prefix_len;
-        if (!c_starts_with(source.data(), source.size(), cq_prefix, cq_prefix_len, pos_of_lsbracket)) {
-            operation_pos += next;
-            continue;
+        // try to match "[CQ:"
+        // if "[CQ:" did not match at operation_pos, jump to #next to find next '[CQ:'
+        std::size_t next = pos_of_lsbracket;
+
+        // a assumed start position of "type" in "[CQ:type"
+        std::size_t type_begin = pos_of_lsbracket + cq_prefix_len;
+
+        for (; next < type_begin; next++) {
+            if (source[next] != cq_prefix[next - pos_of_lsbracket]) break;
         }
+        operation_pos = next;
+        if (next != type_begin) continue;
 
-        int mode = 0;
+        CQ_BLOCK_DETECT_TYPE mode = CQ_BLOCK_DETECT_TYPE::cq_type;
 
-        std::size_t i = pos_of_lsbracket + cq_prefix_len;
+        std::size_t i = type_begin;
         std::size_t pos_of_rsbracket = std::string::npos;
 
-        for (; i < source.size(); i++) {
-            if ((source[i] >= 'A' && source[i] <= 'Z') || (source[i] >= 'a' && source[i] <= 'z')
-                || (source[i] >= '0' && source[i] <= '9'))
-                continue;
-            // "[CQ:where,"
-            else if (source[i] == ',') {
-                pos_of_rsbracket = source.find_first_of(']', i + 1);
-                if (pos_of_rsbracket == std::string::npos) {
-                    panic_end(std::string::npos);
-                    return;
+        sutils::cq_disassemblies temp_item;
+        std::size_t para_first_begin;
+        std::size_t para_first_size;
+        std::size_t para_second_begin;
+
+        auto push_pair = [&](std::string &&par1, std::string &&par2) {
+            params_pair ppair = {std::move(par1), std::move(par2)};
+            temp_item.params.emplace_back(std::move(ppair));
+        };
+
+        for (std::size_t i = type_begin; i < source.size(); i++) {
+            switch (mode) {
+            case CQ_BLOCK_DETECT_TYPE::cq_type: {
+                if ((source[i] >= 'A' && source[i] <= 'Z') || (source[i] >= 'a' && source[i] <= 'z')
+                    || (source[i] >= '0' && source[i] <= '9')) {
+                    mode = CQ_BLOCK_DETECT_TYPE::cq_type_follow;
                 } else {
-                    mode = 1;
+                    operation_pos = i;
+                    mode = CQ_BLOCK_DETECT_TYPE::none;
+                    break;
                 }
+                continue;
+            }
+            case CQ_BLOCK_DETECT_TYPE::cq_type_follow: { // try to get a word behind ':'
+                if ((source[i] >= 'A' && source[i] <= 'Z') || (source[i] >= 'a' && source[i] <= 'z')
+                    || (source[i] >= '0' && source[i] <= '9')) {
+                    continue;
+                } else if (source[i] == ',') { // time for parameter
+                    // [CQ:what,
+                    //     <-->
+                    temp_item.type = source.substr(type_begin, i - type_begin);
+                    mode = CQ_BLOCK_DETECT_TYPE::cq_para_first;
+                } else if (source[i] == ']') { // [CQ:what]
+                    temp_item.type = source.substr(type_begin, i - type_begin);
+                    mode = CQ_BLOCK_DETECT_TYPE::cq_end;
+                    break;
+                } else {
+                    operation_pos = i;
+                    mode = CQ_BLOCK_DETECT_TYPE::none;
+                    break;
+                }
+                continue;
+            }
+            case CQ_BLOCK_DETECT_TYPE::cq_para_first: { // cq param name may have space on both side
+                if (source[i] == ' ')
+                    continue;
+                else if (source[i] == ']') {
+                    mode = CQ_BLOCK_DETECT_TYPE::none;
+                    break;
+                } else {
+                    para_first_begin = i;
+                    para_first_size = 1;
+                    mode = CQ_BLOCK_DETECT_TYPE::cq_para_first_follow;
+                }
+                continue;
+            }
+            case CQ_BLOCK_DETECT_TYPE::cq_para_first_follow: {
+                if (source[i] == ' ')
+                    mode = CQ_BLOCK_DETECT_TYPE::cq_para_first_tail;
+                else if (source[i] == ']') {
+                    mode = CQ_BLOCK_DETECT_TYPE::none;
+                    break;
+                } else if (source[i] == '=')
+                    mode = CQ_BLOCK_DETECT_TYPE::cq_para_second;
+                else
+                    para_first_size++;
+                continue;
+            }
+            case CQ_BLOCK_DETECT_TYPE::cq_para_first_tail: {
+                if (source[i] == ' ')
+                    continue;
+                else if (source[i] == '=')
+                    mode = CQ_BLOCK_DETECT_TYPE::cq_para_second;
+                else {
+                    mode = CQ_BLOCK_DETECT_TYPE::none;
+                    break;
+                }
+                continue;
+            }
+            case CQ_BLOCK_DETECT_TYPE::cq_para_second: {
+                if (source[i] == ']' || source[i] == ',') {
+                    mode = CQ_BLOCK_DETECT_TYPE::none;
+                    break;
+                } else {
+                    para_second_begin = i;
+                    mode = CQ_BLOCK_DETECT_TYPE::cq_para_second_follow;
+                }
+                continue;
+            }
+            case CQ_BLOCK_DETECT_TYPE::cq_para_second_follow: {
+                if (source[i] == ']') {
+                    push_pair(source.substr(para_first_begin, para_first_size),
+                              source.substr(para_second_begin, i - para_second_begin));
+                    mode = CQ_BLOCK_DETECT_TYPE::cq_end;
+                    break;
+                } else if (source[i] == ',') {
+                    push_pair(source.substr(para_first_begin, para_first_size),
+                              source.substr(para_second_begin, i - para_second_begin));
+                    mode = CQ_BLOCK_DETECT_TYPE::cq_para_first;
+                    break;
+                }
+                continue;
+            }
+            default:
                 break;
             }
-            // "[CQ:what]"
-            else if (source[i] == ']') {
-                pos_of_rsbracket = i;
-                mode = 2;
+
+            if (mode == CQ_BLOCK_DETECT_TYPE::cq_end) {
+                if (pos_of_lsbracket > panic_pos) {
+                    panic_end(pos_of_lsbracket);
+                }
+                container.emplace_back(std::move(temp_item));
+                operation_pos = panic_pos = i + 1;
                 break;
-            } else
+            } else if (mode == CQ_BLOCK_DETECT_TYPE::none) {
                 break;
+            }
         }
-
-        if (mode > 0) {
-            if (pos_of_lsbracket > panic_pos) {
-                panic_end(pos_of_lsbracket);
-            }
-
-            if (mode == 1) {
-                sutils::cq_disasemblies item = {
-                    source.substr(pos_of_lsbracket + cq_prefix_len, i - pos_of_lsbracket - cq_prefix_len), {}};
-                std::size_t after_comma = i + 1;
-
-                auto push_pair = [&](std::string &&par1, std::string &&par2) {
-                    params_pair ppair = {std::move(par1), std::move(par2)};
-                    item.params.emplace_back(std::move(ppair));
-                };
-
-                auto trim_params = [&](std::size_t begin, std::size_t end) -> std::string {
-                    // trim, possibly useless
-                    while (source[begin] == ' ') begin++;
-                    while (source[end] == ' ') end--;
-                    return source.substr(begin, end + 1 - begin);
-                };
-
-                for (;;) {
-                    // "[CQ:what,params=123123,"
-                    //                 ^
-                    std::size_t pos_of_equal = source.find_first_of('=', after_comma);
-
-                    // "[CQ:what,params=123123,"
-                    //           ^----^
-                    std::string params1 = trim_params(after_comma, pos_of_equal - 1);
-
-                    // "[CQ:what,params=123123,"
-                    //                        ^
-                    std::size_t pos_of_comma = source.find_first_of(',', after_comma);
-                    if (pos_of_comma == std::string::npos || pos_of_comma > pos_of_rsbracket) {
-                        // "[CQ:what,params=123123]"
-                        //                  ^----^
-                        std::string params2 = source.substr(pos_of_equal + 1, pos_of_rsbracket - pos_of_equal - 1);
-                        push_pair(std::move(params1), std::move(params2));
-                        break;
-                    } else {
-                        // "[CQ:what,params=123123,"
-                        //                  ^----^
-                        std::string params2 = source.substr(pos_of_equal + 1, pos_of_comma - pos_of_equal - 1);
-                        push_pair(std::move(params1), std::move(params2));
-
-                        // "[CQ:what,params=123123,params=1234"
-                        //                        ^
-                        after_comma = pos_of_comma + 1;
-                        continue;
-                    }
-                }
-                container.emplace_back(std::move(item));
-                panic_pos = operation_pos = pos_of_rsbracket + 1;
-            } else if (mode == 2) {
-                sutils::cq_disasemblies item = {
-                    source.substr(pos_of_lsbracket + cq_prefix_len, i - pos_of_lsbracket - cq_prefix_len), {}};
-                container.emplace_back(std::move(item));
-                panic_pos = operation_pos = i + 1;
-            }
-
-        } else
-            operation_pos = i + 1;
     }
 }
