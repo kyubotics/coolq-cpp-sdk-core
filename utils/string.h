@@ -2,6 +2,7 @@
 
 #include "../common.h"
 
+#include <ctype>
 #include <regex>
 
 namespace cq::utils {
@@ -31,6 +32,22 @@ namespace cq::utils {
     std::string ws2s(const std::wstring &ws);
     std::wstring s2ws(const std::string &s);
     std::string ansi(const std::string &s);
+
+    bool string_starts_with(const std::string &s, const std::string &prefix, size_t begin = 0) noexcept;
+
+    size_t string_split(std::vector<std::string> &container, const std::string &s,
+                        const std::function<bool(char)> &pred, bool include_empty = true) noexcept;
+
+    inline size_t string_split(std::vector<std::string> &container, const std::string &s, const char delim,
+                               bool include_empty = true) noexcept {
+        return string_split(container, s, [delim](auto ch) { return ch == delim; }, include_empty);
+    }
+
+    inline size_t string_split(std::vector<std::string> &container, const std::string &s,
+                               bool include_empty = true) noexcept {
+        return string_split(container, s, std::isspace, include_empty);
+    }
+
 } // namespace cq::utils
 
 namespace std {
@@ -39,12 +56,6 @@ namespace std {
 } // namespace std
 
 namespace sutils {
-    extern bool starts_with(const std::string &s, const std::string &prefix, const size_t begin = 0) noexcept;
-
-    extern std::string cq_escape(const std::string &source, const bool escape_comma) noexcept;
-    extern std::string cq_unescape(const std::string &source) noexcept;
-    extern void split_string_by_char(std::vector<std::string> &container, std::string source, char splitter) noexcept;
-
     /* parse "test_text[CQ:what][CQ:where,parama=1234,paramb=123][CQ:why,param=1231234]test_text"
      * result looks like
      *  {
@@ -62,5 +73,5 @@ namespace sutils {
         std::vector<params_pair> params;
     };
 
-    extern void cq_disasemble(const std::string &source, std::list<cq_disasemblies> &container) noexcept;
+    void cq_disasemble(const std::string &source, std::list<cq_disasemblies> &container) noexcept;
 } // namespace sutils

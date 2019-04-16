@@ -95,7 +95,7 @@ namespace cq::utils {
                 const auto codepoint_str = m.str(1);
                 u32string u32_str;
 
-                if (sutils::starts_with(codepoint_str, "100000")) {
+                if (utils::string_starts_with(codepoint_str, "100000")) {
                     // keycap # to keycap 9
                     const auto codepoint = static_cast<char32_t>(stoul(codepoint_str.substr(strlen("100000"))));
                     u32_str.append({codepoint, 0xFE0F, 0x20E3});
@@ -126,92 +126,31 @@ namespace cq::utils {
     wstring s2ws(const string &s) { return wstring_convert<codecvt_utf8<wchar_t>, wchar_t>().from_bytes(s); }
 
     string ansi(const string &s) { return string_encode(s, Encoding::ANSI); }
-} // namespace cq::utils
 
-bool sutils::starts_with(const std::string &source, const std::string &prefix, const size_t begin) noexcept {
-    if (source.size() < begin + prefix.size()) return false;
-    for (size_t i = 0; i < prefix.size(); i++) {
-        if (source[i + begin] != prefix[i]) return false;
+    bool string_starts_with(const string &s, const string &prefix, const size_t offset) noexcept {
+        if (s.size() < offset + prefix.size()) return false;
+        for (size_t i = 0; i < prefix.size(); i++) {
+            if (s[i + offset] != prefix[i]) return false;
+        }
+        return true;
     }
-    return true;
-}
 
-struct escape_code {
-    char from[6];
-    char to;
-} static constexpr ESCAPES[4]{{"&#44;", ','}, {"&#91;", '['}, {"&#93;", ']'}, {"&amp;", '&'}};
-
-std::string sutils::cq_escape(const std::string &source, const bool escape_comma) noexcept {
-    std::vector<char> buff(source.size() + 1);
-    std::size_t cursor = 0;
-
-    auto insert = [&](char c) {
-        if (cursor >= buff.size()) buff.resize(buff.size() + 32);
-        buff[cursor] = c;
-        cursor++;
-    };
-
-    std::size_t start = !escape_comma;
-    for (std::size_t i = 0; i < source.size(); i++) {
-        bool escaped = false;
-        for (std::size_t j = start; j < 4; j++) {
-            if (source[i] == ESCAPES[j].to) {
-                std::size_t k = 0;
-                while (ESCAPES[j].from[k]) insert(ESCAPES[j].from[k++]);
-                escaped = true;
-                break;
+    size_t string_split(vector<std::string> &container, const string &s, const function<bool(char)> &pred,
+                        bool include_empty) noexcept {
+        size_t i = 0;
+        std::vector<char> buff;
+        while (s[i]) {
+            buff.clear();
+            while (s[i] && !pred(s[i])) buff.push_back(s[i++]);
+            if (s[i]) i++; // not end of string, skip the delim
+            if (buff.size() > 0 || include_empty) {
+                buff.push_back('\0');
+                container.emplace_back(buff.data());
             }
         }
-        if (!escaped) insert(source[i]);
+        return container.size();
     }
-    insert('\0');
-    return std::string(buff.data());
-}
-
-std::string sutils::cq_unescape(const std::string &source) noexcept {
-    std::vector<char> buff(source.size() + 1);
-    std::size_t cursor = 0;
-
-    auto insert = [&](char c) { buff[cursor++] = c; };
-
-    size_t i = 0;
-    while (true) {
-        while (source[i] != '&') {
-            insert(source[i]);
-            if (!source[i]) return std::string(buff.data());
-            i++;
-        }
-
-        if (i + 5 > source.size()) {
-            insert(source[i++]);
-            continue;
-        }
-
-        std::size_t j = 0, k = 0;
-        for (; j < 4; j++) {
-            while (ESCAPES[j].from[k] && source[i + k] == ESCAPES[j].from[k]) k++;
-            if (k == 5) break;
-        }
-        if (k == 5) {
-            insert(ESCAPES[j].to);
-            i += 5;
-        } else
-            insert(source[i++]);
-    }
-    return std::string(buff.data());
-}
-
-void sutils::split_string_by_char(std::vector<std::string> &container, std::string source, char splitter) noexcept {
-    size_t i = 0;
-    while (source[i]) {
-        std::vector<char> buff;
-        while (source[i] && source[i] != splitter) buff.push_back(source[i++]);
-        if (buff.size() > 0) {
-            buff.push_back('\0');
-            container.emplace_back(buff.data());
-        }
-    }
-}
+} // namespace cq::utils
 
 static constexpr char cq_prefix[] = "[CQ:";
 static constexpr size_t cq_prefix_len = sizeof(cq_prefix) - 1;

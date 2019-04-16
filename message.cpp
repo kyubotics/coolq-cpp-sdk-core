@@ -7,23 +7,77 @@
 using namespace std;
 
 namespace cq::message {
-    /*
-    string escape(string str, const bool escape_comma) {
-        boost::replace_all(str, "&", "&amp;");
-        boost::replace_all(str, "[", "&#91;");
-        boost::replace_all(str, "]", "&#93;");
-        if (escape_comma) boost::replace_all(str, ",", "&#44;");
-        return str;
+    const static unordered_map<string, char> UNESCAPE_MAP = {
+        {"&amp;", '&'},
+        {"&#91;", '['},
+        {"&#93;", ']'},
+        {"&#44;", ','},
+    };
+
+    constexpr static short MAX_ESCAPE_LEN = 5;
+
+    string escape(string s, const bool escape_comma = true) {
+        vector<char> out;
+        for (const auto &ch : s) {
+            string escaped;
+            switch (ch) {
+            case '&':
+                escaped = "&amp;";
+                break;
+            case '[':
+                escaped = "&#91;";
+                break;
+            case ']':
+                escaped = "&#93;";
+                break;
+            case ',':
+                if (escape_comma) escaped = "&#44;";
+                break;
+            }
+            if (!escaped.empty()) {
+                copy(escaped.begin(), escaped.end(), back_inserter(out));
+            } else {
+                out.push_back(ch);
+            }
+        }
+        out.push_back('\0');
+        return out.data();
     }
 
-    string unescape(string str) {
-        boost::replace_all(str, "&#44;", ",");
-        boost::replace_all(str, "&#91;", "[");
-        boost::replace_all(str, "&#93;", "]");
-        boost::replace_all(str, "&amp;", "&");
-        return str;
+    string unescape(string s) {
+        vector<char> out;
+        size_t i = 0;
+        while (i < s.size()) {
+            if (s[i] != '&') {
+                // it's not an escaped char
+                out.push_back(s[i++]);
+                continue;
+            }
+            size_t next_i = i + 1;
+            vector<char> entity = {'&'};
+            for (auto j = 1; j < MAX_ESCAPE_LEN && (isalnum(s[i + j]) || s[i + j] == '#' || s[i + j] == ';');
+                 j++, next_i++) {
+                entity.push_back(s[i + j]);
+                if (s[i + j] == ';') {
+                    next_i++;
+                    break;
+                }
+            }
+            if (!entity.empty()) {
+                entity.push_back('\0');
+                const string escaped = entity.data();
+                if (UNESCAPE_MAP.count(escaped)) {
+                    out.push_back(UNESCAPE_MAP.at(escaped));
+
+                } else {
+                    copy(entity.begin(), entity.end() - 1 /* omit the terminator */, back_inserter(out));
+                }
+            }
+            i = next_i;
+        }
+        out.push_back('\0');
+        return out.data();
     }
-    */
 
     Message::Message(const string &msg_str) {
         // implement a DFA manually, because the regex lib of VC++ will throw stack overflow in some cases
@@ -57,12 +111,12 @@ namespace cq::message {
             }
             if (seg.type == "text") {
                 if (const auto it = seg.data.find("text"); it != seg.data.end()) {
-                    ss << sutils::cq_escape((*it).second, false);
+                    ss << escape((*it).second, false);
                 }
             } else {
                 ss << "[CQ:" << seg.type;
                 for (const auto &item : seg.data) {
-                    ss << "," << item.first << "=" << sutils::cq_escape(item.second, true);
+                    ss << "," << item.first << "=" << escape(item.second, true);
                 }
                 ss << "]";
             }
