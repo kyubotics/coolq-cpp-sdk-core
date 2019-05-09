@@ -19,7 +19,7 @@ namespace cq::message {
 
     string escape(string s, const bool escape_comma) {
         vector<char> out;
-        // Reserse some memory for vector could reduce allocation.
+        // Reserve some memory for vector could reduce allocation.
         // If not, every push_back is an O(vector::size) operation.
         // And, further, escape should need more space than original string.
         // The space reserved should be a little more than that
@@ -52,8 +52,8 @@ namespace cq::message {
 
     string unescape(string s) {
         vector<char> out;
-        // reserse some memory for vector could reduce allocation
-        // if not, every push_back is an O(vector::size) operation
+        // Reserve some memory for vector could reduce allocation
+        // If not, every push_back is an O(vector::size) operation
         out.reserve(s.size());
         size_t i = 0;
         while (i < s.size()) {
@@ -70,7 +70,7 @@ namespace cq::message {
             entity[0] = '&';
             bool good_escape = false;
             {
-                // brace here can prevent j interfere with scope outside
+                // brace here can prevent j from interfering with scope outside
                 auto j = 1;
                 for (; j < MAX_ESCAPE_LEN && (isalnum(s[i + j]) || s[i + j] == '#' || s[i + j] == ';'); j++) {
                     entity[j] = (s[i + j]);
@@ -84,7 +84,6 @@ namespace cq::message {
                     entity[j + 1] = '\0';
                     if (UNESCAPE_MAP.count(entity)) {
                         out.push_back(UNESCAPE_MAP.at(entity));
-
                     } else {
                         copy(entity, entity + j, back_inserter(out));
                     }
@@ -102,15 +101,15 @@ namespace cq::message {
     static constexpr size_t cq_prefix_len = sizeof(cq_prefix) - 1;
 
     enum class CQ_BLOCK_DETECT_TYPE {
-        none, // set mode to none when ill-formed
-        cq_type, // "[CQ:t", type is always longer than 0
-        cq_type_follow, // "[CQ:type"
-        cq_para_first, // "[CQ:type, f", param is always longer than 0, also ignore spaces
-        cq_para_first_follow, // "[CQ:type, first"
-        cq_para_first_tail, // "[CQ:type, first ", ignore spaces after param
-        cq_para_second, // "[CQ:type, first =s",  value is always longer than 0
-        cq_para_second_follow, // "[CQ:type, first =second"
-        cq_end // "[CQ:type, first =second]"
+        none,
+        cq_type,
+        cq_type_follow,
+        cq_para_first,
+        cq_para_first_follow,
+        cq_para_first_tail,
+        cq_para_second,
+        cq_para_second_follow,
+        cq_end
     };
 
     using params_pair = std::pair<std::string, std::string>;
@@ -187,6 +186,7 @@ namespace cq::message {
             for (std::size_t i = type_begin; i < source.size(); i++) {
                 switch (mode) {
                 case CQ_BLOCK_DETECT_TYPE::cq_type: {
+                    // "[CQ:t", type is always longer than 0
                     if ((source[i] >= 'A' && source[i] <= 'Z') || (source[i] >= 'a' && source[i] <= 'z')
                         || (source[i] >= '0' && source[i] <= '9')) {
                         mode = CQ_BLOCK_DETECT_TYPE::cq_type_follow;
@@ -197,7 +197,9 @@ namespace cq::message {
                     }
                     continue;
                 }
-                case CQ_BLOCK_DETECT_TYPE::cq_type_follow: { // try to get a word behind ':'
+                case CQ_BLOCK_DETECT_TYPE::cq_type_follow: {
+                    // "[CQ:type"
+                    // try to get a word behind ':'
                     if ((source[i] >= 'A' && source[i] <= 'Z') || (source[i] >= 'a' && source[i] <= 'z')
                         || (source[i] >= '0' && source[i] <= '9')) {
                         continue;
@@ -211,16 +213,21 @@ namespace cq::message {
                         mode = CQ_BLOCK_DETECT_TYPE::cq_end;
                         break;
                     } else {
+                        // [CQ:??
+                        // ill-formed
                         operation_pos = i;
                         mode = CQ_BLOCK_DETECT_TYPE::none;
                         break;
                     }
                     continue;
                 }
-                case CQ_BLOCK_DETECT_TYPE::cq_para_first: { // cq param name may have space on both side
+                case CQ_BLOCK_DETECT_TYPE::cq_para_first: {
+                    // "[CQ:type, f", param is always longer than 0, also ignore spaces
                     if (source[i] == ' ')
                         continue;
                     else if (source[i] == ']') {
+                        // [CQ:type,]
+                        // ill-formed
                         mode = CQ_BLOCK_DETECT_TYPE::none;
                         break;
                     } else {
@@ -231,29 +238,38 @@ namespace cq::message {
                     continue;
                 }
                 case CQ_BLOCK_DETECT_TYPE::cq_para_first_follow: {
+                    // "[CQ:type, first"
                     if (source[i] == ' ')
                         mode = CQ_BLOCK_DETECT_TYPE::cq_para_first_tail;
                     else if (source[i] == ']') {
+                        // [CQ:type, first]
+                        // ill-formed
                         mode = CQ_BLOCK_DETECT_TYPE::none;
                         break;
                     } else if (source[i] == '=')
+                        // [CQ:type, first=
                         mode = CQ_BLOCK_DETECT_TYPE::cq_para_second;
                     else
                         para_first_size++;
                     continue;
                 }
                 case CQ_BLOCK_DETECT_TYPE::cq_para_first_tail: {
+                    // "[CQ:type, first ", ignore spaces after param
                     if (source[i] == ' ')
                         continue;
                     else if (source[i] == '=')
+                        // [CQ:type, first =
                         mode = CQ_BLOCK_DETECT_TYPE::cq_para_second;
                     else {
+                        // [CQ:type, first ??
+                        // ill-formed
                         mode = CQ_BLOCK_DETECT_TYPE::none;
                         break;
                     }
                     continue;
                 }
                 case CQ_BLOCK_DETECT_TYPE::cq_para_second: {
+                    // "[CQ:type, first =s",  value is always longer than 0
                     if (source[i] == ']' || source[i] == ',') {
                         mode = CQ_BLOCK_DETECT_TYPE::none;
                         break;
@@ -264,14 +280,19 @@ namespace cq::message {
                     continue;
                 }
                 case CQ_BLOCK_DETECT_TYPE::cq_para_second_follow: {
+                    // "[CQ:type, first =second"
                     if (source[i] == ']') {
                         push_pair(source.substr(para_first_begin, para_first_size),
                                   source.substr(para_second_begin, i - para_second_begin));
+                        // "[CQ:type, first =second]"
+                        // good enough to finish this cq code
                         mode = CQ_BLOCK_DETECT_TYPE::cq_end;
                         break;
                     } else if (source[i] == ',') {
                         push_pair(source.substr(para_first_begin, para_first_size),
                                   source.substr(para_second_begin, i - para_second_begin));
+                        // "[CQ:type, first =second,"
+                        // param again
                         mode = CQ_BLOCK_DETECT_TYPE::cq_para_first;
                         break;
                     }
@@ -296,8 +317,6 @@ namespace cq::message {
     }
 
     Message::Message(const string &msg_str) {
-        // implement a DFA manually, because the regex lib of VC++ will throw stack overflow in some cases
-
         const static auto TEXT = 0;
         const static auto FUNCTION_NAME = 1;
         const static auto PARAMS = 2;
