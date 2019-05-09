@@ -2,7 +2,7 @@
 
 #include "../common.h"
 
-#include <ctype>
+#include <cctype>
 #include <regex>
 
 namespace cq::utils {
@@ -45,7 +45,7 @@ namespace cq::utils {
 
     inline size_t string_split(std::vector<std::string> &container, const std::string &s,
                                bool include_empty = true) noexcept {
-        return string_split(container, s, std::isspace, include_empty);
+        return string_split(container, s, [](auto ch) { return bool(std::isspace(ch)); }, include_empty);
     }
 
 } // namespace cq::utils
@@ -68,10 +68,10 @@ namespace sutils {
      * also, "text" result will be cq_unescaped
      */
     using params_pair = std::pair<std::string, std::string>;
-    struct cq_disasemblies {
+    struct cq_disassemblies {
         std::string type;
-        std::vector<params_pair> params;
+        std::list<params_pair> params;
     };
 
-    void cq_disasemble(const std::string &source, std::list<cq_disasemblies> &container) noexcept;
+    extern void cq_disassemble(const std::string &source, std::list<cq_disassemblies> &container) noexcept;
 } // namespace sutils
