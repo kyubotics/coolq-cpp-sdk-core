@@ -54,24 +54,3 @@ namespace std {
     inline string to_string(const string &val) { return val; }
     inline string to_string(const bool val) { return val ? "true" : "false"; }
 } // namespace std
-
-namespace sutils {
-    /* parse "test_text[CQ:what][CQ:where,parama=1234,paramb=123][CQ:why,param=1231234]test_text"
-     * result looks like
-     *  {
-     *      {type: "text",  params: [ {"text", "test_text"} ]},
-     *      {type: "what",  params: [ ]},
-     *      {type: "where", params: [ {"parama", "1234"}, {"paramb", "123"} ]},
-     *      {type: "why",   params: [ {"param", "1231234"} ]},
-     *      {type: "text",  params: [ {"text", "test_text"} ]}
-     *  }
-     * also, "text" result will be cq_unescaped
-     */
-    using params_pair = std::pair<std::string, std::string>;
-    struct cq_disassemblies {
-        std::string type;
-        std::list<params_pair> params;
-    };
-
-    extern void cq_disassemble(const std::string &source, std::list<cq_disassemblies> &container) noexcept;
-} // namespace sutils
