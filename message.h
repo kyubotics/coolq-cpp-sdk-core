@@ -9,12 +9,12 @@ namespace cq::message {
     /**
      * Escape special characters in the given string.
      */
-    std::string escape(std::string s, bool escape_comma = true);
+    // std::string escape(std::string str, bool escape_comma = true);
 
     /**
      * Unescape special characters in the given string.
      */
-    std::string unescape(std::string s);
+    // std::string unescape(std::string str);
 
     struct MessageSegment {
         std::string type;
