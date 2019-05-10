@@ -6,6 +6,10 @@
 #include "./utils/string.h"
 
 namespace cq::message {
+
+    extern std::string cq_escape(const std::string &source, const bool escape_comma = true) noexcept;
+    extern std::string cq_unescape(const std::string &source) noexcept;
+
     /**
      * Escape special characters in the given string.
      */
