@@ -9,7 +9,6 @@ namespace cq {
 
     namespace app {
         int32_t auth_code = 0;
-        std::string id = "";
 
         std::function<void()> on_initialize;
         std::function<void()> on_enable;
@@ -30,9 +29,11 @@ using cq::utils::call_if_valid;
  */
 __CQ_EVENT(const char *, AppInfo, 0)
 () {
-    // CoolQ API version: 9
-    static auto info = "9," + app::id;
-    return info.c_str();
+#define _STR(s) #s
+#define STR(s) _STR(s)
+    return "9," STR(APP_ID); // APP_ID is from CMakeLists.txt
+#undef STR
+#undef _STR
 }
 
 /**
