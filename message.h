@@ -7,18 +7,15 @@
 
 namespace cq::message {
 
-    extern std::string cq_escape(const std::string &source, const bool escape_comma = true) noexcept;
-    extern std::string cq_unescape(const std::string &source) noexcept;
-
     /**
      * Escape special characters in the given string.
      */
-    // std::string escape(std::string str, bool escape_comma = true);
+    extern std::string cq_escape(const std::string &source, const bool escape_comma = true) noexcept;
 
     /**
      * Unescape special characters in the given string.
      */
-    // std::string unescape(std::string str);
+    extern std::string cq_unescape(const std::string &source) noexcept;
 
     struct MessageSegment {
         std::string type;
