@@ -48,6 +48,7 @@ FUNC(int32_t, setGroupAddRequestV2, int32_t auth_code, const char *response_flag
 FUNC(int64_t, getLoginQQ, int32_t auth_code)
 FUNC(const char *, getLoginNick, int32_t auth_code)
 FUNC(const char *, getStrangerInfo, int32_t auth_code, int64_t qq, cq_bool_t no_cache)
+FUNC(const char *, getFriendList, int32_t auth_code, cq_bool_t reserved)
 FUNC(const char *, getGroupList, int32_t auth_code)
 FUNC(const char *, getGroupMemberList, int32_t auth_code, int64_t group_id)
 FUNC(const char *, getGroupMemberInfoV2, int32_t auth_code, int64_t group_id, int64_t qq, cq_bool_t no_cache)

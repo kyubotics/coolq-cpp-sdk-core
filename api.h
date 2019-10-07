@@ -173,6 +173,12 @@ namespace cq::api {
         return utils::string_from_coolq(ret);
     }
 
+    inline std::string get_friend_list_base64() noexcept(false) {
+        const auto ret = raw::CQ_getFriendList(app::auth_code, false);
+        __throw_if_needed(ret);
+        return utils::string_from_coolq(ret);
+    }
+
     inline std::string get_group_list_base64() noexcept(false) {
         const auto ret = raw::CQ_getGroupList(app::auth_code);
         __throw_if_needed(ret);
@@ -270,6 +276,14 @@ namespace cq::api {
     inline User get_stranger_info(const int64_t user_id, const bool no_cache = false) noexcept(false) {
         try {
             return ObjectHelper::from_base64<User>(get_stranger_info_base64(user_id, no_cache));
+        } catch (exception::ParseError &) {
+            throw exception::ApiError(exception::ApiError::INVALID_DATA);
+        }
+    }
+
+    inline std::vector<Friend> get_friend_list() noexcept(false) {
+        try {
+            return ObjectHelper::multi_from_base64<std::vector<Friend>>(get_friend_list_base64());
         } catch (exception::ParseError &) {
             throw exception::ApiError(exception::ApiError::INVALID_DATA);
         }

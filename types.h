@@ -65,6 +65,29 @@ namespace cq {
         }
     };
 
+    struct Friend : User {
+        const static size_t MIN_SIZE = 12;
+
+        // int64_t user_id; // from User
+        // std::string nickname; // from User
+        std::string remark;
+        // Sex sex; // from User, not using
+        // int32_t age; // from User, not using
+
+        static Friend from_bytes(const std::string &bytes) {
+            auto pack = utils::BinPack(bytes);
+            Friend frnd;
+            try {
+                frnd.user_id = pack.pop_int<int64_t>();
+                frnd.nickname = pack.pop_string();
+                frnd.remark = pack.pop_string();
+            } catch (exception::BytesNotEnough &) {
+                throw exception::ParseError("failed to parse from bytes to a Friend object");
+            }
+            return frnd;
+        }
+    };
+
     struct Group {
         const static size_t MIN_SIZE = 10;
 
@@ -91,7 +114,7 @@ namespace cq {
         // int64_t user_id; // from User
         // std::string nickname; // from User
         std::string card;
-        // Sex sex = Sex::UNKNOWN; // from User
+        // Sex sex; // from User
         // int32_t age; // from User
         std::string area;
         int32_t join_time = 0;
