@@ -93,6 +93,8 @@ namespace cq {
 
         int64_t group_id = 0;
         std::string group_name;
+        int32_t member_count = 0; // only available with get_group_info()
+        int32_t max_member_count = 0; // only available with get_group_info()
 
         static Group from_bytes(const std::string &bytes) {
             auto pack = utils::BinPack(bytes);
@@ -100,6 +102,12 @@ namespace cq {
             try {
                 group.group_id = pack.pop_int<int64_t>();
                 group.group_name = pack.pop_string();
+                try {
+                    // optional, since this method should work for both get_group_list() and get_group_info()
+                    group.member_count = pack.pop_int<int32_t>();
+                    group.max_member_count = pack.pop_int<int32_t>();
+                } catch (exception::BytesNotEnough &ignored) {
+                }
             } catch (exception::BytesNotEnough &) {
                 throw exception::ParseError("failed to parse from bytes to a Group object");
             }
